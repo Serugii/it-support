@@ -1,0 +1,27 @@
+{
+  "name": "it-support",
+  "version": "1.0.0",
+  "description": "Інтелектуальна система аналізу поведінки студентів у LMS",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "node src/app.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Serugii/it-support.git"
+  },
+  "keywords": [],
+  "author": "Serugii",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Serugii/it-support/issues"
+  },
+  "homepage": "https://github.com/Serugii/it-support#readme",
+  "dependencies": {
+    "chart.js": "^4.5.1",
+    "csv-parser": "^3.2.0",
+    "ml-kmeans": "^7.0.0"
+  }
+}
