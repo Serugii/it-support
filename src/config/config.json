@@ -1,0 +1,5 @@
+{
+  "appName": "Student Analytics",
+  "version": "1.0",
+  "logPath": "./logs/app.log"
+}
