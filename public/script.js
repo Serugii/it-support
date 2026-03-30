@@ -19,6 +19,11 @@ const btn = document.getElementById('analyzeBtn');
 const currentStatus = document.getElementById('currentStatus');
 
 btn.addEventListener('click', async () => {
+  if (studentsState.length === 0) {
+    showToast("Немає даних для аналізу");
+    currentStatus.textContent = "Немає даних";
+    return;
+  }
   for (const s of studentsState) {
     const error = validateStudent(s);
     if (error) {
@@ -89,27 +94,27 @@ function renderStudentsEditor() {
 
     div.innerHTML = `
       <input placeholder="Ім'я"
-        value="${s.name || ''}"
+        value="${s.name ?? ''}"
         onblur="validateField(this, 'name')"
         onchange="updateStudent(${index}, 'name', this.value)">
 
       <input type="number" placeholder="Логіни"
-        value="${s.logins || ''}"
+        value="${s.logins ?? ''}"
         onblur="validateField(this, 'logins')"
         onchange="updateStudent(${index}, 'logins', this.value)">
 
       <input type="number" placeholder="Час"
-        value="${s.time_spent || ''}"
+        value="${s.time_spent ?? ''}"
         onblur="validateField(this, 'time_spent')"
         onchange="updateStudent(${index}, 'time_spent', this.value)">
 
       <input type="number" placeholder="Завдання"
-        value="${s.assignments_completed || ''}"
+        value="${s.assignments_completed ?? ''}"
         onblur="validateField(this, 'assignments_completed')"
         onchange="updateStudent(${index}, 'assignments_completed', this.value)">
 
       <input type="number" placeholder="Оцінка"
-        value="${s.grade || ''}"
+        value="${s.grade ?? ''}"
         onblur="validateField(this, 'grade')"
         onchange="updateStudent(${index}, 'grade', this.value)">
 
@@ -123,8 +128,15 @@ function renderStudentsEditor() {
 function updateStudent(index, field, value) {
   if (!studentsState[index]) return;
 
-  studentsState[index][field] =
-    field === 'name' ? value : (value === "" ? 0 : Number(value));
+  if (field === 'name') {
+    studentsState[index][field] = value;
+  } else {
+    if (value === "" || isNaN(value)) {
+      studentsState[index][field] = null;
+    } else {
+      studentsState[index][field] = Number(value);
+    }
+  }
 }
 
 function deleteStudent(index) {
@@ -167,10 +179,10 @@ function clearStudents() {
 function addStudentForm() {
   studentsState.push({
     name: "",
-    logins: 0,
-    time_spent: 0,
-    assignments_completed: 0,
-    grade: 0,
+    logins: null,
+    time_spent: null,
+    assignments_completed: null,
+    grade: null,
     status: "норма",
     cluster: 0
   });
@@ -314,31 +326,52 @@ window.clearStudents = clearStudents;
 window.showTab = showTab;
 
 function validateStudent(s) {
-  if (!s.name || s.name.trim().length < 2) return "Ім'я ≥ 2";
+  if (!s.name || s.name.trim().length < 2)
+    return "Ім'я повинно містити мінімум 2 символи";
 
-  if (!Number.isFinite(s.logins) || s.logins < 0) return "Логіни ≥ 0";
+  if (s.logins == null || !Number.isFinite(s.logins) || s.logins < 0)
+    return "Логіни повинні бути числом ≥ 0";
 
-  if (!Number.isFinite(s.time_spent) || s.time_spent < 0) return "Час ≥ 0";
+  if (s.time_spent == null || !Number.isFinite(s.time_spent) || s.time_spent < 0)
+    return "Час повинен бути числом ≥ 0";
 
-  if (!Number.isFinite(s.assignments_completed) || s.assignments_completed < 0)
-    return "Завдання ≥ 0";
+  if (s.assignments_completed == null ||
+      !Number.isFinite(s.assignments_completed) ||
+      s.assignments_completed < 0)
+    return "Завдання повинні бути числом ≥ 0";
 
-  if (!Number.isFinite(s.grade) || s.grade < 0 || s.grade > 100)
-    return "Оцінка 0–100";
+  if (s.grade == null ||
+      !Number.isFinite(s.grade) ||
+      s.grade < 0 ||
+      s.grade > 100)
+    return "Оцінка повинна бути від 0 до 100";
 
   return null;
 }
 
 function validateField(input, field) {
-  const value = field === 'name' ? input.value : Number(input.value);
+  let value = field === 'name'
+    ? input.value
+    : (input.value === "" ? null : Number(input.value));
 
   let error = null;
 
-  if (field === 'name' && (!value || value.length < 2)) error = "Мін 2";
-  if (field !== 'name' && (!Number.isFinite(value) || value < 0)) error = "≥ 0";
-  if (field === 'grade' && (value < 0 || value > 100)) error = "0–100";
+  if (field === 'name' && (!value || value.trim().length < 2))
+    error = "Мінімум 2 символи";
 
-  input.style.border = error ? "2px solid #e74c3c" : "1px solid #ccc";
+  if (field !== 'name') {
+    if (value === null || !Number.isFinite(value) || value < 0)
+      error = "Повинно бути число ≥ 0";
+  }
+
+  if (field === 'grade' && (value < 0 || value > 100))
+    error = "0–100";
+
+  input.style.border = error
+    ? "2px solid #e74c3c"
+    : "1px solid #ccc";
+
+  return error;
 }
 
 function toggleAnalysisBlocks(show) {
