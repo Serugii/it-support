@@ -1,29 +1,101 @@
+/*************************************************
+ * STATE
+ *************************************************/
 let studentsState = [];
+
 let chartInstance = null;
+let clusterChartInstance = null;
 
+/*************************************************
+ * DOM REFERENCES
+ *************************************************/
+let btn = null;
+let currentStatus = null;
+
+function showTab(tabId, event) {
+  if (tabId === 'analysis') {
+    for (const s of studentsState) {
+      const error = validateStudent(s);
+      if (error) {
+        showToast(error);
+        return;
+      }
+    }
+  }
+  document.querySelectorAll('.tabs button')
+    .forEach(btn => btn.classList.remove('active-tab'));
+  event.classList.add('active-tab');
+  document.querySelectorAll('.tab')
+    .forEach(t => t.classList.remove('active'));
+  document.getElementById(tabId).classList.add('active');
+  if (tabId === 'analysis') {
+    if (studentsState.length > 0) {
+      runAnalysis();
+    } else {
+      drawChart([]);
+      showRiskStudents([]);
+      currentStatus.textContent = "Немає даних";
+      toggleAnalysisBlocks(false);
+    }
+  }
+}
+
+function submitStudents() {
+  for (const s of studentsState) {
+    const error = validateStudent(s);
+    if (error) {
+      showToast(error);
+      return;
+    }
+  }
+  localStorage.setItem('students', JSON.stringify(studentsState));
+  showToast("Збережено!");
+}
+
+function toggleAnalysisBlocks(show) {
+  const clusterCard = document.getElementById('clusterCard');
+  const riskCard = document.getElementById('riskCard');
+  if (!clusterCard || !riskCard) return;
+  clusterCard.style.display = show ? 'block' : 'none';
+  riskCard.style.display = show ? 'block' : 'none';
+}
+
+/*************************************************
+ * INIT
+ *************************************************/
 window.addEventListener('load', () => {
+  btn = document.getElementById('analyzeBtn');
+  currentStatus = document.getElementById('currentStatus');
+
   const saved = localStorage.getItem('students');
-  studentsState = saved ? JSON.parse(saved) : [];
 
-  drawChart(studentsState);
+  try {
+    studentsState = saved ? JSON.parse(saved) : [];
+  } catch {
+    studentsState = [];
+  }
+
   renderStudentsEditor();
-
+  drawChart(studentsState);
   toggleAnalysisBlocks(false);
 
   if (studentsState.length > 0) {
-    btn.click();
+    runAnalysis();
   }
 });
 
-const btn = document.getElementById('analyzeBtn');
-const currentStatus = document.getElementById('currentStatus');
+/*************************************************
+ * ANALYSIS FLOW
+ *************************************************/
+btn?.addEventListener('click', runAnalysis);
 
-btn.addEventListener('click', async () => {
-  if (studentsState.length === 0) {
+async function runAnalysis() {
+  if (!studentsState.length) {
     showToast("Немає даних для аналізу");
     currentStatus.textContent = "Немає даних";
     return;
   }
+
   for (const s of studentsState) {
     const error = validateStudent(s);
     if (error) {
@@ -41,31 +113,32 @@ btn.addEventListener('click', async () => {
       body: JSON.stringify({ students: studentsState })
     });
 
-    if (!res.ok) {
-      throw new Error("Server error");
-    }
+    if (!res.ok) throw new Error("Server error");
 
     const data = await res.json();
 
-    const analyzedStudents = data.students || [];
+    const analyzed = data.students || [];
 
     currentStatus.textContent =
       `Знайдено ${data.riskCount || 0} студентів ризику`;
 
-    drawChart(analyzedStudents);
-    showRiskStudents(analyzedStudents);
-    drawClusterChart(analyzedStudents);
-    toggleAnalysisBlocks(analyzedStudents.length > 0);
-  } catch (err) {
-    currentStatus.textContent = "Помилка!";
-    console.error(err);
-  }
-});
+    drawChart(analyzed);
+    drawClusterChart(analyzed);
+    showRiskStudents(analyzed);
+    toggleAnalysisBlocks(analyzed.length > 0);
 
+  } catch (err) {
+    console.error(err);
+    currentStatus.textContent = "Помилка!";
+  }
+}
+
+/*************************************************
+ * CHARTS
+ *************************************************/
 function drawChart(students = []) {
   const ctx = document.getElementById('chart');
-
-  if (!Array.isArray(students)) students = [];
+  if (!ctx) return;
 
   if (chartInstance) chartInstance.destroy();
 
@@ -76,84 +149,131 @@ function drawChart(students = []) {
       datasets: [{
         label: 'Оцінки',
         data: students.map(s => s.grade || 0),
-        backgroundColor: students.map((_, i) =>
-          ['#c0392b', '#e74c3c', '#ff6b6b'][i % 3]
-        )
+        backgroundColor: ['#c0392b', '#e74c3c', '#ff6b6b']
       }]
     }
   });
 }
 
+function drawClusterChart(students = []) {
+  const ctx = document.getElementById('clusterChart');
+  if (!ctx) return;
+
+  if (clusterChartInstance) clusterChartInstance.destroy();
+
+  const clusters = {};
+
+  students.forEach(s => {
+    if (!clusters[s.cluster]) clusters[s.cluster] = [];
+    clusters[s.cluster].push({ x: s.logins, y: s.grade });
+  });
+
+  const datasets = Object.keys(clusters).map(c => ({
+    label: `Кластер ${c}`,
+    data: clusters[c],
+    backgroundColor: getClusterColor(c)
+  }));
+
+  clusterChartInstance = new Chart(ctx, {
+    type: 'scatter',
+    data: { datasets }
+  });
+}
+
+function getClusterColor(c) {
+  const colors = ['#3498db', '#2ecc71', '#f1c40f'];
+  return colors[c] || '#95a5a6';
+}
+
+/*************************************************
+ * UI RENDER
+ *************************************************/
 function renderStudentsEditor() {
   const container = document.getElementById('studentsForm');
+  if (!container) return;
+
   container.innerHTML = '';
 
-  studentsState.forEach((s, index) => {
+  studentsState.forEach((s, i) => {
     const div = document.createElement('div');
     div.className = 'student-row';
 
     div.innerHTML = `
       <input placeholder="Ім'я"
         value="${s.name ?? ''}"
-        onblur="validateField(this, 'name')"
-        onchange="updateStudent(${index}, 'name', this.value)">
+        onchange="updateStudent(${i}, 'name', this.value)">
 
       <input type="number" placeholder="Логіни"
         value="${s.logins ?? ''}"
-        onblur="validateField(this, 'logins')"
-        onchange="updateStudent(${index}, 'logins', this.value)">
+        onchange="updateStudent(${i}, 'logins', this.value)">
 
       <input type="number" placeholder="Час"
         value="${s.time_spent ?? ''}"
-        onblur="validateField(this, 'time_spent')"
-        onchange="updateStudent(${index}, 'time_spent', this.value)">
+        onchange="updateStudent(${i}, 'time_spent', this.value)">
 
       <input type="number" placeholder="Завдання"
         value="${s.assignments_completed ?? ''}"
-        onblur="validateField(this, 'assignments_completed')"
-        onchange="updateStudent(${index}, 'assignments_completed', this.value)">
+        onchange="updateStudent(${i}, 'assignments_completed', this.value)">
 
       <input type="number" placeholder="Оцінка"
         value="${s.grade ?? ''}"
-        onblur="validateField(this, 'grade')"
-        onchange="updateStudent(${index}, 'grade', this.value)">
+        onchange="updateStudent(${i}, 'grade', this.value)">
 
-      <button onclick="deleteStudent(${index})">✖</button>
+      <button onclick="deleteStudent(${i})">✖</button>
     `;
 
     container.appendChild(div);
   });
 }
 
+function renderStudentsTable(students) {
+  const table = document.getElementById('studentsTable');
+  if (!table) return;
+  table.innerHTML = `
+    <tr>
+      <th>Ім'я</th>
+      <th>Логіни</th>
+      <th>Час</th>
+      <th>Завдання</th>
+      <th>Оцінка</th>
+      <th>Статус</th>
+    </tr>
+  `;
+  students.forEach(s => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${s.name}</td>
+      <td>${s.logins}</td>
+      <td>${s.time_spent}</td>
+      <td>${s.assignments_completed}</td>
+      <td>${s.grade}</td>
+      <td class="${s.status === 'ризик' ? 'risk-text' : 'ok-text'}">
+        ${s.status}
+      </td>
+    `;
+    table.appendChild(row);
+  });
+}
+
+/*************************************************
+ * DATA MANIPULATION
+ *************************************************/
 function updateStudent(index, field, value) {
   if (!studentsState[index]) return;
 
-  if (field === 'name') {
-    studentsState[index][field] = value;
-  } else {
-    if (value === "" || isNaN(value)) {
-      studentsState[index][field] = null;
-    } else {
-      studentsState[index][field] = Number(value);
-    }
-  }
+  studentsState[index][field] =
+    field === 'name'
+      ? value
+      : value === "" ? null : Number(value);
 }
 
 function deleteStudent(index) {
   studentsState.splice(index, 1);
 
-  drawChart(studentsState);
   renderStudentsEditor();
+  drawChart(studentsState);
   showRiskStudents(studentsState);
-
-  if (studentsState.length === 0) {
-    toggleAnalysisBlocks(false);
-
-    if (clusterChartInstance) {
-      clusterChartInstance.destroy();
-      clusterChartInstance = null;
-    }
-  }
+  toggleAnalysisBlocks(studentsState.length > 0);
 }
 
 function clearStudents() {
@@ -162,15 +282,9 @@ function clearStudents() {
   studentsState = [];
   localStorage.removeItem('students');
 
-  drawChart([]);
   renderStudentsEditor();
+  drawChart([]);
   showRiskStudents([]);
-
-  if (clusterChartInstance) {
-    clusterChartInstance.destroy();
-    clusterChartInstance = null;
-  }
-
   toggleAnalysisBlocks(false);
 
   showToast("Список очищено");
@@ -191,22 +305,25 @@ function addStudentForm() {
   drawChart(studentsState);
 }
 
+/*************************************************
+ * RISK LOGIC
+ *************************************************/
 function showRiskStudents(students) {
-  renderStudentsTable(students);
+  renderStudentsTable(students); 
 
   const block = document.getElementById('riskBlock');
-  block.innerHTML = '';
+  if (!block) return;
 
   const risk = students.filter(s => s.status === 'ризик');
 
-  if (risk.length === 0) {
+  if (!risk.length) {
     block.innerHTML = `<p class="ok-text">Немає студентів у групі ризику</p>`;
     return;
   }
 
   block.innerHTML = `
     <div class="risk-box">
-      У групі ризику: ${risk.length} студент(ів)
+      У групі ризику: ${risk.length}
       <ul>
         ${risk.map(s => `<li>${s.name} (${s.grade})</li>`).join('')}
       </ul>
@@ -214,205 +331,54 @@ function showRiskStudents(students) {
   `;
 }
 
-let clusterChartInstance = null;
+/*************************************************
+ * VALIDATION
+ *************************************************/
+function validateStudent(s) {
+  if (!s.name || s.name.trim().length < 2)
+    return "Ім'я мінімум 2 символи";
 
-function drawClusterChart(students = []) {
-  const ctx = document.getElementById('clusterChart');
-  if (!ctx) return;
+  if (s.logins == null || s.logins < 0)
+    return "Логіни ≥ 0";
 
-  if (clusterChartInstance) clusterChartInstance.destroy();
+  if (s.time_spent == null || s.time_spent < 0)
+    return "Час ≥ 0";
 
-  const clusters = {};
+  if (s.assignments_completed == null || s.assignments_completed < 0)
+    return "Завдання ≥ 0";
 
-  students.forEach(s => {
-    if (!clusters[s.cluster]) clusters[s.cluster] = [];
-    clusters[s.cluster].push({ x: s.logins, y: s.grade });
-  });
+  if (s.grade == null || s.grade < 0 || s.grade > 100)
+    return "Оцінка 0–100";
 
-  const datasets = Object.keys(clusters).map(cluster => ({
-    label: `Кластер ${cluster}`,
-    data: clusters[cluster],
-    backgroundColor: getClusterColor(cluster)
-  }));
-
-  clusterChartInstance = new Chart(ctx, {
-    type: 'scatter',
-    data: { datasets },
-    options: {
-      plugins: {
-        legend: { position: 'top' }
-      },
-      scales: {
-        x: {
-          title: { display: true, text: 'Логіни' }
-        },
-        y: {
-          title: { display: true, text: 'Оцінка' }
-        }
-      }
-    }
-  });
+  return null;
 }
 
-function getClusterColor(cluster) {
-  const colors = ['#3498db', '#2ecc71', '#f1c40f'];
-  return colors[cluster] || '#95a5a6';
-}
-
-function showTab(tabId, event) {
-  if (tabId === 'analysis') {
-    for (const s of studentsState) {
-      const error = validateStudent(s);
-      if (error) {
-        showToast(error);
-        return;
-      }
-    }
-  }
-
-  document.querySelectorAll('.tabs button')
-    .forEach(btn => btn.classList.remove('active-tab'));
-
-  event.target.classList.add('active-tab');
-
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.getElementById(tabId).classList.add('active');
-
-  if (tabId === 'analysis') {
-    if (studentsState.length > 0) {
-      btn.click();
-    } else {
-      drawChart([]);
-      showRiskStudents([]);
-      currentStatus.textContent = "Немає даних";
-      toggleAnalysisBlocks(false);
-    }
-  }
-}
-
-function submitStudents() {
-  for (const s of studentsState) {
-    const error = validateStudent(s);
-    if (error) {
-      showToast(error);
-      return;
-    }
-  }
-
-  localStorage.setItem('students', JSON.stringify(studentsState));
-  showToast("Збережено!");
-}
-
+/*************************************************
+ * TOAST
+ *************************************************/
 function showToast(message) {
   const div = document.createElement('div');
 
   div.textContent = message;
-  div.style.position = 'fixed';
-  div.style.bottom = '20px';
-  div.style.right = '20px';
-  div.style.background = '#e74c3c';
-  div.style.color = 'white';
-  div.style.padding = '10px 15px';
-  div.style.borderRadius = '8px';
+  div.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #e74c3c;
+    color: white;
+    padding: 10px 15px;
+    border-radius: 8px;
+  `;
 
   document.body.appendChild(div);
   setTimeout(() => div.remove(), 3000);
 }
 
+/*************************************************
+ * GLOBAL EXPORTS
+ *************************************************/
 window.addStudentForm = addStudentForm;
-window.submitStudents = submitStudents;
 window.deleteStudent = deleteStudent;
 window.clearStudents = clearStudents;
 window.showTab = showTab;
-
-function validateStudent(s) {
-  if (!s.name || s.name.trim().length < 2)
-    return "Ім'я повинно містити мінімум 2 символи";
-
-  if (s.logins == null || !Number.isFinite(s.logins) || s.logins < 0)
-    return "Логіни повинні бути числом ≥ 0";
-
-  if (s.time_spent == null || !Number.isFinite(s.time_spent) || s.time_spent < 0)
-    return "Час повинен бути числом ≥ 0";
-
-  if (s.assignments_completed == null ||
-      !Number.isFinite(s.assignments_completed) ||
-      s.assignments_completed < 0)
-    return "Завдання повинні бути числом ≥ 0";
-
-  if (s.grade == null ||
-      !Number.isFinite(s.grade) ||
-      s.grade < 0 ||
-      s.grade > 100)
-    return "Оцінка повинна бути від 0 до 100";
-
-  return null;
-}
-
-function validateField(input, field) {
-  let value = field === 'name'
-    ? input.value
-    : (input.value === "" ? null : Number(input.value));
-
-  let error = null;
-
-  if (field === 'name' && (!value || value.trim().length < 2))
-    error = "Мінімум 2 символи";
-
-  if (field !== 'name') {
-    if (value === null || !Number.isFinite(value) || value < 0)
-      error = "Повинно бути число ≥ 0";
-  }
-
-  if (field === 'grade' && (value < 0 || value > 100))
-    error = "0–100";
-
-  input.style.border = error
-    ? "2px solid #e74c3c"
-    : "1px solid #ccc";
-
-  return error;
-}
-
-function toggleAnalysisBlocks(show) {
-  const clusterCard = document.getElementById('clusterCard');
-  const riskCard = document.getElementById('riskCard');
-
-  if (!clusterCard || !riskCard) return;
-
-  clusterCard.style.display = show ? 'block' : 'none';
-  riskCard.style.display = show ? 'block' : 'none';
-}
-
-function renderStudentsTable(students) {
-  const table = document.getElementById('studentsTable');
-  if (!table) return;
-
-  table.innerHTML = `
-    <tr>
-      <th>Ім'я</th>
-      <th>Логіни</th>
-      <th>Час</th>
-      <th>Завдання</th>
-      <th>Оцінка</th>
-      <th>Статус</th>
-    </tr>
-  `;
-
-  students.forEach(s => {
-    const row = document.createElement('tr');
-
-    row.innerHTML = `
-      <td>${s.name}</td>
-      <td>${s.logins}</td>
-      <td>${s.time_spent}</td>
-      <td>${s.assignments_completed}</td>
-      <td>${s.grade}</td>
-      <td class="${s.status === 'ризик' ? 'risk-text' : 'ok-text'}">
-        ${s.status}
-      </td>
-    `;
-
-    table.appendChild(row);
-  });
-}
+window.submitStudents = submitStudents;
