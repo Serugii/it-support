@@ -130,3 +130,13 @@ tr:hover {
   border-left: 5px solid #e74c3c;
   border-radius: 6px;
 }
+.export-buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+.export-btn {
+  flex: 1;
+  padding: 10px 14px;
+  font-size: 0.95rem;
+}

@@ -1,6 +1,6 @@
 {
   "name": "it-support",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Інтелектуальна система аналізу поведінки студентів у LMS",
   "main": "src/app.js",
   "scripts": {
@@ -28,5 +28,11 @@
   },
   "devDependencies": {
     "jest": "^30.3.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^ml-kmeans$": "<rootDir>/tests/__mocks__/ml-kmeans.js"
+    }
   }
 }

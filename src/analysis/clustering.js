@@ -1,4 +1,5 @@
-const kmeans = require('ml-kmeans').default;
+// BUG FIX: ml-kmeans v7 не має .default — правильний імпорт через деструктуризацію
+const { kmeans } = require('ml-kmeans');
 
 function clusterStudents(students) {
   if (!students || students.length === 0) {
